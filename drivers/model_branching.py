@@ -38,7 +38,7 @@ class BranchingConvexKAN(nn.Module):
         self.z_dim = z_dim
 
         # Elastic branch (convex, polyconvex energy)
-        self.elastic_kan = KAN(width=n_hidden, grid=c.grid, k=c.spline_order, seed=seed, device='cpu', base_fun='zero', grid_eps = 1.0, 
+        self.elastic_kan = KAN(width=n_hidden, grid=c.grid, k=c.spline_order, seed=seed, device='cuda', base_fun='zero', grid_eps = 1.0, 
 				   grid_range_0=grid_range, sp_trainable=c.sp_trainable, sb_trainable=c.sb_trainable,symbolic_enabled=c.symbolic_enabled,
 				   auto_save=False)
 

@@ -94,19 +94,20 @@ class KANLayer(nn.Module):
         self.in_dim = in_dim
         self.num = num
         self.k = k
+        self.device = device 
 
         if isinstance(grid_range[0], list):
-            grid = torch.zeros(self.in_dim , num+1)
+            grid = torch.zeros(self.in_dim , num+1, device=device)
             for i in range(self.in_dim):
                 grid[i] = torch.linspace(grid_range[i][0], grid_range[i][1], steps=num + 1)   
         else:
-            grid = torch.linspace(grid_range[0], grid_range[1], steps=num + 1)[None,:].expand(self.in_dim, num+1)
+            grid = torch.linspace(grid_range[0], grid_range[1], steps=num + 1, device=device)[None,:].expand(self.in_dim, num+1)
             
         grid = extend_grid(grid, k_extend=k)
         self.grid = torch.nn.Parameter(grid).requires_grad_(False)
-        noises = (torch.rand(self.num+1, self.in_dim, self.out_dim) - 1/2) * noise_scale / num
+        noises = (torch.rand(self.num+1, self.in_dim, self.out_dim, device=self.device) - 1/2) * noise_scale / num
 
-        self.coef = torch.nn.Parameter(curve2coef(self.grid[:,k:-k].permute(1,0), noises, self.grid, k))
+        self.coef = torch.nn.Parameter(curve2coef(self.grid[:,k:-k].permute(1,0), noises, self.grid, k, device=self.device))
         self.coef_convex = self.coef.detach().clone().requires_grad_(False)
 
         
@@ -163,7 +164,7 @@ class KANLayer(nn.Module):
             
         base = self.base_fun(x) # (batch, in_dim)
 
-        y, coef_convex = coef2curve(x_eval=x, grid=self.grid, coef=self.coef, k=self.k)
+        y, coef_convex = coef2curve(x_eval=x, grid=self.grid, coef=self.coef, k=self.k, device=self.device)
         self.coef_convex = coef_convex.detach()
         postspline = y.clone().permute(0,2,1)
             
@@ -200,7 +201,7 @@ class KANLayer(nn.Module):
         batch = x.shape[0]
         #x = torch.einsum('ij,k->ikj', x, torch.ones(self.out_dim, ).to(self.device)).reshape(batch, self.size).permute(1, 0)
         x_pos = torch.sort(x, dim=0)[0]
-        y_eval, coef_convex = coef2curve(x_pos, self.grid, self.coef, self.k)
+        y_eval, coef_convex = coef2curve(x_pos, self.grid, self.coef, self.k, device=self.device)
         self.coef_convex = coef_convex.detach()
         num_interval = self.grid.shape[1] - 1 - 2*self.k
         
@@ -219,11 +220,11 @@ class KANLayer(nn.Module):
         if mode == 'grid':
             sample_grid = get_grid(2*num_interval)
             x_pos = sample_grid.permute(1,0)
-            y_eval, coef_convex = coef2curve(x_pos, self.grid, self.coef, self.k)
+            y_eval, coef_convex = coef2curve(x_pos, self.grid, self.coef, self.k, device=self.device)
             self.coef_convex = coef_convex.detach()
 
         self.grid.data = extend_grid(grid, k_extend=self.k)
-        self.coef.data = curve2coef(x_pos, y_eval, self.grid, self.k)
+        self.coef.data = curve2coef(x_pos, y_eval, self.grid, self.k, device=self.device)
 
         # breakpoint()
         # print('you are here')
@@ -257,7 +258,7 @@ class KANLayer(nn.Module):
         batch = x.shape[0]
         
         x_pos = torch.sort(x, dim=0)[0]
-        y_eval, coef_convex= coef2curve(x_pos, parent.grid, parent.coef, parent.k)
+        y_eval, coef_convex= coef2curve(x_pos, parent.grid, parent.coef, parent.k, device=self.device)
         self.coef_convex = coef_convex
         num_interval = self.grid.shape[1] - 1 - 2*self.k
         
@@ -274,11 +275,11 @@ class KANLayer(nn.Module):
         if mode == 'grid':
             sample_grid = get_grid(2*num_interval)
             x_pos = sample_grid.permute(1,0)
-            y_eval = coef2curve(x_pos, parent.grid, parent.coef, parent.k)
+            y_eval = coef2curve(x_pos, parent.grid, parent.coef, parent.k, device=self.device)
         
         grid = extend_grid(grid, k_extend=self.k)
         self.grid.data = grid
-        self.coef.data = curve2coef(x_pos, y_eval, self.grid, self.k)
+        self.coef.data = curve2coef(x_pos, y_eval, self.grid, self.k, device=self.device)
 
     def get_subset(self, in_id, out_id):
         '''
@@ -302,7 +303,7 @@ class KANLayer(nn.Module):
         >>> kanlayer_small.in_dim, kanlayer_small.out_dim
         (2, 3)
         '''
-        spb = KANLayer(len(in_id), len(out_id), self.num, self.k, base_fun=self.base_fun)
+        spb = KANLayer(len(in_id), len(out_id), self.num, self.k, base_fun=self.base_fun, device=self.device)
         spb.grid.data = self.grid[in_id]
         spb.coef.data = self.coef[in_id][:,out_id]
         spb.scale_base.data = self.scale_base[in_id][:,out_id]

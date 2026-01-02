@@ -35,7 +35,7 @@ def B_batch(x, grid, k=0, extend=True, device='cpu'):
     if k == 0:
         value = (x >= grid[:, :, :-1]) * (x < grid[:, :, 1:])
     else:
-        B_km1 = B_batch(x[:,:,0], grid=grid[0], k=k - 1)
+        B_km1 = B_batch(x[:,:,0], grid=grid[0], k=k - 1, device=device)
         
         value = (x - grid[:, :, :-(k + 1)]) / (grid[:, :, k:-1] - grid[:, :, :-(k + 1)]) * B_km1[:, :, :-1] + (
                     grid[:, :, k + 1:] - x) / (grid[:, :, k + 1:] - grid[:, :, 1:(-k)]) * B_km1[:, :, 1:]
@@ -69,7 +69,7 @@ def coef2curve(x_eval, grid, coef, k, device="cpu"):
     coef_convex = c1.repeat(1, 1, coef.shape[2]) + torch.cumsum(d, dim=2)
     
     # Evaluate the B-spline curve at x_eval
-    b_splines = B_batch(x_eval, grid, k=k)
+    b_splines = B_batch(x_eval, grid, k=k, device=device)
     y_eval = torch.einsum('ijk,jlk->ijl', b_splines, coef_convex.to(b_splines.device))
     
     # Set a small epsilon for local polynomial fitting
@@ -78,7 +78,7 @@ def coef2curve(x_eval, grid, coef, k, device="cpu"):
     # --- Left endpoint: linear extrapolation ---
     # Use two points near the left boundary: grid[:, k]-eps and grid[:, k]+eps.
     x_poly_left = torch.stack((grid[:, k], grid[:, k]+eps), dim=0)  # Shape: [2, in_dim]
-    b_splines_left = B_batch(x_poly_left, grid, k=k)
+    b_splines_left = B_batch(x_poly_left, grid, k=k, device=device)
     y_poly_left = torch.einsum('ijk,jlk->ijl', b_splines_left, coef_convex.to(b_splines_left.device))
     # y_poly_left: [2, in_dim, out_dim]
     # Use these to compute a linear slope:
@@ -91,7 +91,7 @@ def coef2curve(x_eval, grid, coef, k, device="cpu"):
     # --- Right endpoint: linear extrapolation ---
     # Use three points near the right boundary: grid[:, -k-1]-eps, grid[:, -k-1], grid[:, -k-1]+eps.
     x_poly_right = torch.stack((grid[:, -k-1]-eps, grid[:, -k-1]), dim=0)  # [3, in_dim]
-    b_splines_right = B_batch(x_poly_right, grid, k=k)
+    b_splines_right = B_batch(x_poly_right, grid, k=k, device=device)
     y_poly_right = torch.einsum('ijk,jlk->ijl', b_splines_right, coef_convex.to(b_splines_right.device))
     # y_poly_right: [3, in_dim, out_dim]
     y_right_0 = y_poly_right[0, :, :]
@@ -123,7 +123,7 @@ def coef2curve(x_eval, grid, coef, k, device="cpu"):
     return y_eval, coef_convex
 
 
-def curve2coef(x_eval, y_eval, grid, k, lamb=1e-8): # not used in the default settings (i.e., grid adjustments occur only during initialization)
+def curve2coef(x_eval, y_eval, grid, k, lamb=1e-8, device="cpu"): # not used in the default settings (i.e., grid adjustments occur only during initialization)
     '''
     Convert B-spline curves to coefficients using least squares,
     preserving endpoint slopes.
@@ -145,7 +145,7 @@ def curve2coef(x_eval, y_eval, grid, k, lamb=1e-8): # not used in the default se
     n_coef = grid.shape[1] - k - 1
 
     # Evaluate B-spline basis matrix
-    mat = B_batch(x_eval, grid, k)  # Expected shape: [batch, something, n_coef]
+    mat = B_batch(x_eval, grid, k, device=device)  # Expected shape: [batch, something, n_coef]
     # Rearrange mat to shape [in_dim, out_dim, batch, n_coef]
     mat = mat.permute(1, 0, 2)[:, None, :, :].expand(in_dim, out_dim, batch, n_coef)
     
@@ -154,8 +154,8 @@ def curve2coef(x_eval, y_eval, grid, k, lamb=1e-8): # not used in the default se
     
     device = mat.device
     # Compute least-squares terms using einsum.
-    XtX = torch.einsum('ijmn,ijnp->ijmp', mat.permute(0, 1, 3, 2), mat)
-    Xty = torch.einsum('ijmn,ijnp->ijmp', mat.permute(0, 1, 3, 2), y_eval)
+    XtX = torch.einsum('ijmn,ijnp->ijmp', mat.permute(0, 1, 3, 2).to(device), mat)
+    Xty = torch.einsum('ijmn,ijnp->ijmp', mat.permute(0, 1, 3, 2).to(device), y_eval)
     
     identity = torch.eye(n_coef, n_coef, device=device)[None, None, :, :].expand(in_dim, out_dim, n_coef, n_coef)
     A = XtX + lamb * identity

@@ -32,15 +32,27 @@ class BranchingConvexKAN(nn.Module):
                  n_hidden,
                  grid_range,
                  z_dim=4,
+                 use_kan=True,
                  seed=0):
         super().__init__()
 
         self.z_dim = z_dim
 
         # Elastic branch (convex, polyconvex energy)
-        self.elastic_kan = KAN(width=n_hidden, grid=c.grid, k=c.spline_order, seed=seed, device='cuda', base_fun='zero', grid_eps = 1.0, 
-				   grid_range_0=grid_range, sp_trainable=c.sp_trainable, sb_trainable=c.sb_trainable,symbolic_enabled=c.symbolic_enabled,
-				   auto_save=False)
+        if use_kan:
+            self.elastic_nn = KAN(width=n_hidden, grid=c.grid, k=c.spline_order, seed=seed, device='cuda', base_fun='zero', grid_eps = 1.0, 
+                    grid_range_0=grid_range, sp_trainable=c.sp_trainable, sb_trainable=c.sb_trainable,symbolic_enabled=c.symbolic_enabled,
+                    auto_save=False)
+        else:
+            self.elastic_nn = nn.Sequential(
+                nn.Linear(3, n_hidden),
+                nn.SiLU(),
+                nn.Linear(n_hidden, n_hidden),
+                nn.SiLU(),
+                nn.Linear(n_hidden, 1),
+                nn.Softplus()
+            )
+    
 
         # Material conditioning for elastic branch
         self.elastic_scale = MaterialHyperNet(z_dim, out_dim=1)
@@ -99,7 +111,7 @@ class BranchingConvexKAN(nn.Module):
 
         K = self.compute_invariants(F)
 
-        W_elastic = self.elastic_kan(K)
+        W_elastic = self.elastic_nn(K)
 
         elastic_scale = self.elastic_scale(z)
 

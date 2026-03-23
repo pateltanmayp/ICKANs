@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, "/home/simulation/thesis/ICKANs/")
+sys.path.insert(0, "/home/tanmay/thesis/ICKANs/")
 import torch
 import torch.nn as nn
 from core import *
